@@ -12,6 +12,7 @@
   * 短链接：`https://m.toutiao.com/is/fLrXD62Zo2U/`
   * 网页链接：`https://www.toutiao.com/video/7680960670263493172/`
   * 移动端落地页：`https://m.toutiao.com/video/7680960670263493172/` 或 `https://m.toutiao.com/i7680960670263493172/`
+  * 微头条：`https://m.toutiao.com/w/1876628745217031/`（短链解析后通常落到该形态）
 * **Cookie 依赖**：🟢 免配置，无需任何 Cookie 即可直接匿名解析。
 
 ---
@@ -32,6 +33,20 @@
 
 ### 2.2 抖音联通短视频 / Feed 流视频 (`aid=1128`)
 * 当头条 SSR 页面为纯短视频形态时，自动回退并调用抖音移动 Feed 核心接口（`api5-normal-c-hl.amemv.com/aweme/v1/feed/`）及 PC Web 兜底接口，实现 100% 覆盖。
+
+### 2.3 微头条图文 (`articleType=weitoutiao`)
+微头条落地页（`https://m.toutiao.com/w/{gid}/`）的 `articleInfo` 节点只包含 `gid`、`groupSource` 等元信息，正文、配图与作者全部挂在 `articleInfo.thread.threadBase` 下：
+
+| 字段 | 含义 |
+| :--- | :--- |
+| `threadBase.content` / `richContent` | 正文（纯文本 / HTML） |
+| `threadBase.largeImageList` | 配图列表，元素 `url` 为可直接下载的图片地址 |
+| `threadBase.user.info` | 作者昵称 `name` 与头像 `avatarUrl` |
+| `seoTDK.title` | 页面标题（正文截断 + `-今日头条` 后缀） |
+
+`ToutiaoParser._normalize_article()` 负责把 `threadBase` 归一化进 `articleInfo`（`title` / `content` / `mediaUser` / `threadImageList`），后续取值方法与视频形态共用；`get_image_list()` 同时会收集正文 HTML 中 `<img>` 的 `src` 或 `data-src`，覆盖图文长文配图。
+
+> 若只读取 `articleInfo.title` / `articleInfo.content`，微头条会因两字段缺失而返回 `MEDIA_NOT_FOUND`。
 
 ```python
 from src.parser_factory import register_parser
