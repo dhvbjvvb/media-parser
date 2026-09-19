@@ -476,7 +476,7 @@ class UrlParser:
         elif platform == "央视频":
             query_params = parse_qs(parsed_url.query)
             preserved_params = []
-            for key in ("vid", "cid", "type", "serverFrom"):
+            for key in ("vid", "cid", "type", "serverFrom", "articleid"):
                 value = query_params.get(key, [None])[0]
                 if value is not None:
                     preserved_params.append((key, value))

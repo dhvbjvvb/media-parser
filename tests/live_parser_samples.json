@@ -4572,6 +4572,21 @@
       "pattern": "微视频及短剧详情"
     },
     {
+      "platform": "央视频",
+      "url": "https://www.yspapp.cn/6j3j",
+      "media_types": [
+        "images"
+      ],
+      "expected_fields": [
+        "title",
+        "cover",
+        "author",
+        "images"
+      ],
+      "note": "2026-09-19 已验证: 短链落到 article.html 空壳 SPA，正文与配图取自 article_info 接口",
+      "pattern": "图文文章"
+    },
+    {
       "platform": "豆包",
       "url": "https://www.doubao.com/music-sharing?vid=v02292g10006dadu4kq7dld48hgk0dn0&share_id=55311664453668866",
       "media_types": [

@@ -148,6 +148,69 @@ class YangshipinParserTest(unittest.TestCase):
             self.assertEqual(parser.get_cover_photo_url(), "https://jietufengmian.yangshipin.cn/cover3.jpg")
             self.assertEqual(parser.get_image_list(), ["https://jietufengmian.yangshipin.cn/cover3.jpg"])
 
+    def test_parses_article_page_images_and_text(self):
+        article_html = """
+        <!DOCTYPE html><meta charset="utf-8">
+        <meta http-equiv="refresh" content="0; URL='https://m.yangshipin.cn/static/article.html?articleid=e05kmjv3gty29'"/>
+        <title>央视频</title>
+        """
+        api_payload = {
+            "data": {
+                "errCode": 0,
+                "head": {
+                    "title": "亚运乒乓球签表：上届冠亚军孙颖莎早田希娜同半区",
+                    "source": "体坛网",
+                    "publishTime": "2026-09-18 21:04",
+                    "coverImage": "https://jietufengmian.yangshipin.cn/cover.jpg",
+                },
+                "content": {
+                    "content": (
+                        '<p>第一段正文。</p>'
+                        '<p align="center"><img src="/general_cos/article-imgs/20260918/aaa.jpg?size=336x177" alt=""></p>'
+                        '<p>第二段正文。</p>'
+                        '<p><img src="https://cover.yangshipin.cn/general_cos/article-imgs/20260918/bbb.jpg" alt=""></p>'
+                    )
+                },
+            }
+        }
+        resp = MagicMock()
+        resp.json.return_value = api_payload
+
+        with patch.object(YangshipinParser, "fetch_html_content", side_effect=[article_html, article_html]), \
+             patch("requests.Session.get", return_value=resp), \
+             patch.object(YangshipinParser, "_fetch_video_url_by_vid", return_value=None):
+            parser = YangshipinParser("https://www.yspapp.cn/6j3j")
+            self.assertEqual(parser.get_title_content(), "亚运乒乓球签表：上届冠亚军孙颖莎早田希娜同半区")
+            self.assertEqual(
+                parser.get_image_list(),
+                [
+                    "https://cover.yangshipin.cn/general_cos/article-imgs/20260918/aaa.jpg",
+                    "https://cover.yangshipin.cn/general_cos/article-imgs/20260918/bbb.jpg",
+                ],
+            )
+            self.assertEqual(parser.get_cover_photo_url(), "https://jietufengmian.yangshipin.cn/cover.jpg")
+            self.assertEqual(parser.get_author_info(), {"name": "体坛网", "avatar": None})
+            self.assertEqual(parser.get_real_video_url(), None)
+            self.assertIn("第一段正文。", parser.get_description())
+            self.assertIn("第二段正文。", parser.get_description())
+
+    def test_article_url_without_short_link_keeps_query(self):
+        api_payload = {
+            "data": {
+                "head": {"title": "文章标题", "source": "央视"},
+                "content": {"content": '<p>正文</p>'},
+            }
+        }
+        resp = MagicMock()
+        resp.json.return_value = api_payload
+        empty_html = "<html><body></body></html>"
+
+        with patch.object(YangshipinParser, "fetch_html_content", return_value=empty_html), \
+             patch("requests.Session.get", return_value=resp):
+            parser = YangshipinParser("https://m.yangshipin.cn/static/article.html?articleid=abc123")
+            self.assertEqual(parser.get_title_content(), "文章标题")
+            self.assertEqual(parser.get_image_list(), [])
+
     def test_handles_empty_or_broken_html(self):
         with patch.object(YangshipinParser, "fetch_html_content", return_value="<html><body>404 Not Found</body></html>"), \
              patch.object(YangshipinParser, "_fetch_video_url_by_vid", return_value=None):

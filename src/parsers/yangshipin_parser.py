@@ -1,8 +1,9 @@
+import html as html_utils
 import json
 import re
 import time
 import uuid
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from Crypto.Cipher import AES
@@ -18,7 +19,13 @@ logger = get_logger(__name__)
 
 @register_parser("央视频")
 class YangshipinParser(BaseParser):
-    """央视频 (Yangshipin) 客户端及 H5 平台解析器，支持横竖屏微短剧/精选视频元数据、原画封面、作者信息与无水印视频播放流提取。"""
+    """央视频 (Yangshipin) 客户端及 H5 平台解析器，支持横竖屏微短剧/精选视频元数据、原画封面、作者信息与无水印视频播放流提取，以及图文文章正文与配图提取。"""
+
+    VAPPID = "59306155"
+    VSECRET = "b42702bf7309a179d102f3d51b1add2fda0bc7ada64cb801"
+    ARTICLE_INFO_API = "https://comment.yangshipin.cn/web/article/article_info"
+    # 文章正文里的配图是相对路径，实际 CDN 只有 cover 这个主机能取到图；w./s./img. 都返回 HTML 占位页
+    ARTICLE_IMG_HOST = "https://cover.yangshipin.cn"
 
     def __init__(self, real_url):
         super().__init__(real_url)
@@ -33,6 +40,7 @@ class YangshipinParser(BaseParser):
         self.video_url = None
         self.image_list = []
         self.author = None
+        self.description = None
         self._parse()
 
     def _generate_ckey(self, vid: str, rnd: str, guid: str, platform: str = "4330701", app_ver: str = "1.3.5") -> str:
@@ -161,6 +169,10 @@ class YangshipinParser(BaseParser):
                     self._fetch_video_url_by_vid(self.vid)
                 return
 
+        # 图文文章页（article.html?articleid=xxx）没有 vid，走文章接口取正文与配图
+        if self._parse_article(html):
+            return
+
         try:
             # 1. 尝试从横屏视频 STATE 提取 (__STATE_video__)
             data_vid = self._extract_state_json(html, "window.__STATE_video__")
@@ -205,7 +217,7 @@ class YangshipinParser(BaseParser):
 
             # 3. 兜底：从 OpenGraph / HTML 标签提取
             if not self.title or not self.cover_url:
-                soup = BeautifulSoup(html, "lxml")
+                soup = self._make_soup(html)
                 if not self.title:
                     og_title = soup.find("meta", property="og:title")
                     if og_title and og_title.get("content"):
@@ -236,6 +248,81 @@ class YangshipinParser(BaseParser):
         if not self.video_url and self.cover_url and self.cover_url not in self.image_list:
             self.image_list.append(self.cover_url)
 
+    def _parse_article(self, html):
+        """解析央视频图文文章：正文与配图仅存于 article_info 接口，页面本身是空壳 SPA。"""
+        match = re.search(r'articleid=([0-9a-zA-Z_\-]+)', self.real_url) or re.search(
+            r'articleid=([0-9a-zA-Z_\-]+)', html
+        )
+        if not match:
+            return False
+
+        params = {
+            "targetId": "1",
+            "vappid": self.VAPPID,
+            "vsecret": self.VSECRET,
+            "raw": "1",
+            "id": match.group(1),
+        }
+        try:
+            res = self.session.get(
+                self.ARTICLE_INFO_API, params=params, headers=self.headers, timeout=5
+            )
+            res.raise_for_status()
+            data = (res.json() or {}).get("data") or {}
+        except Exception as e:
+            logger.warning("Failed to fetch Yangshipin article %s: %s", match.group(1), e)
+            return False
+
+        head = data.get("head") or {}
+        body = (data.get("content") or {}).get("content") or ""
+
+        self.title = head.get("title") or ""
+        self.cover_url = self._article_image_url(head.get("coverImage"))
+        self.image_list = self._article_image_list(body)
+        self.description = self._article_text(body)
+        source = head.get("source")
+        self.author = {"name": source, "avatar": None} if source else None
+        return True
+
+    def _article_image_url(self, raw_url):
+        """相对路径配图补全为 CDN 绝对地址，并去掉缩略图参数以取原图。"""
+        if not raw_url or not isinstance(raw_url, str):
+            return None
+        url = urljoin(self.ARTICLE_IMG_HOST, raw_url)
+        return re.sub(r'\?size=[^?&]*', '', url)
+
+    def _article_image_list(self, body):
+        """按正文出现顺序提取配图绝对直链，去重。"""
+        images = []
+        for raw_url in re.findall(r'<img[^>]+src="([^"]+)"', body or ""):
+            url = self._article_image_url(html_utils.unescape(raw_url))
+            if url and url not in images:
+                images.append(url)
+        return images
+
+    @staticmethod
+    def _make_soup(markup):
+        """lxml 缺失时退回标准库解析器，保证纯文本/图片提取不依赖编译型依赖。"""
+        try:
+            return BeautifulSoup(markup, "lxml")
+        except Exception:
+            return BeautifulSoup(markup, "html.parser")
+
+    @staticmethod
+    def _article_text(body):
+        """将 CKEditor 正文 HTML 转为保留段落的纯文本。"""
+        if not body:
+            return None
+        soup = YangshipinParser._make_soup(body)
+        for tag in soup.find_all(["script", "style", "template"]):
+            tag.decompose()
+        for tag in soup.find_all("br"):
+            tag.replace_with("\n")
+        for tag in soup.find_all(["p", "div", "li", "section", "h1", "h2", "h3", "h4", "blockquote"]):
+            tag.append("\n")
+        lines = [re.sub(r"[\t\f\v ]+", " ", line).strip() for line in soup.get_text().splitlines()]
+        return "\n".join(line for line in lines if line) or None
+
     def _extract_state_json(self, html, state_key):
         """从页面提取指定 state_key 的 JSON 数据对象"""
         idx = html.find(state_key)
@@ -257,6 +344,9 @@ class YangshipinParser(BaseParser):
 
     def get_title_content(self):
         return self.title or ""
+
+    def get_description(self):
+        return self.description
 
     def get_cover_photo_url(self):
         return self.cover_url
