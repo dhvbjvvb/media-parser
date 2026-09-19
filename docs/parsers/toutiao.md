@@ -1,16 +1,16 @@
 # 今日头条 (Toutiao) 逆向解析指南
 
-本篇详细记录字节跳动旗下 **今日头条 (Toutiao)** 视频、中长视频与微头条视频的逆向解析方案。
+本篇详细记录字节跳动旗下 **今日头条 (Toutiao)** 视频、中长视频、微头条图文及长文文章的逆向解析方案。
 
 ---
 
 ## 1. 平台特征与支持能力
 
 * **平台标识**：`今日头条`
-* **支持媒体类型**：高清视频 (MP4，最高 1080P/720P) / 封面图 / 视频标题 / 创作者信息
+* **支持媒体类型**：高清视频 (MP4，最高 1080P/720P) / 微头条图文图集 / 长文正文内嵌配图 / 封面图 / 标题与清洗正文 / 创作者信息
 * **常见链接形态**：
-  * 短链接：`https://m.toutiao.com/is/fLrXD62Zo2U/`
-  * 网页链接：`https://www.toutiao.com/video/7680960670263493172/`
+  * 短链接：`https://m.toutiao.com/is/fLrXD62Zo2U/` 或 `https://m.toutiao.com/is/geu37y7CA4w/`
+  * 网页链接：`https://www.toutiao.com/video/7680960670263493172/` 或 `https://www.toutiao.com/article/7680960670263493172/`
   * 移动端落地页：`https://m.toutiao.com/video/7680960670263493172/` 或 `https://m.toutiao.com/i7680960670263493172/`
   * 微头条：`https://m.toutiao.com/w/1876628745217031/`（短链解析后通常落到该形态）
 * **Cookie 依赖**：🟢 免配置，无需任何 Cookie 即可直接匿名解析。
