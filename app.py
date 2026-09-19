@@ -1,8 +1,12 @@
 import os
 import secrets
-import fcntl
 from datetime import timedelta
 from flask import Flask
+
+try:
+    import fcntl  # Linux/macOS：用于密钥文件的跨进程互斥
+except ImportError:  # Windows 没有 fcntl，退化为不做 flock（仅开发/测试环境）
+    fcntl = None
 from src.api.parse import bp as api_bp
 from src.web.views import bp as web_bp
 from src.auth import bp as auth_bp, register_template_helpers
@@ -20,7 +24,8 @@ def _load_or_create_secret(data_dir):
     try:
         descriptor = os.open(secret_path, os.O_RDWR | os.O_CREAT, 0o600)
         with os.fdopen(descriptor, "r+", encoding="utf-8") as secret_file:
-            fcntl.flock(secret_file.fileno(), fcntl.LOCK_EX)
+            if fcntl is not None:
+                fcntl.flock(secret_file.fileno(), fcntl.LOCK_EX)
             saved = secret_file.read().strip()
             if saved:
                 return saved

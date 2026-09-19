@@ -8,7 +8,13 @@ beautifulsoup4==4.12.3
 lxml==6.1.0
 
 # 工具与加密
-mini-racer==0.12.4
+# mini-racer 0.12.4 的 V8 快照在 Python 3.12+ 上无法反序列化（本地开发直接崩溃），
+# 0.13.2 是仍然导出 MiniRacer 公共接口、且快照可用的版本。
+mini-racer==0.13.2
 pycryptodome==3.20.0
 python-dotenv==1.2.2
+
+# Windows 本地开发用：Windows 不自带 IANA 时区库，ZoneInfo("Asia/Shanghai") 会报错；
+# 生产环境是 Linux（python:3.11-slim），系统 tzdata 已具备，无需安装。
+tzdata==2026.4; sys_platform == "win32"
 
