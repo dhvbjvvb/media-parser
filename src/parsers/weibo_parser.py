@@ -255,6 +255,75 @@ class WeiboParser(BaseParser):
             
         return {}
 
+    # 档位优先级：page_info.urls 的 key 与直链 label 参数同名
+    VIDEO_QUALITY_RANK = {"mp4_1080p": 5, "mp4_720p": 4, "mp4_hd": 3, "mp4_sd": 2, "mp4_ld": 1}
+
+    @staticmethod
+    def _label_from_url(url):
+        match = re.search(r"[?&]label=([a-zA-Z0-9_]+)", url or "")
+        return match.group(1) if match else ""
+
+    @classmethod
+    def _video_candidates(cls, page_info, media_info):
+        """汇总 page_info.urls、media_info 直链与 playback_list 三处的候选档位。"""
+        candidates = []
+
+        def add(url, label="", watermark=None, bitrate=0, size=0):
+            if not isinstance(url, str):
+                return
+            url = url.strip()
+            if not url.startswith(("http://", "https://", "//")):
+                return
+            candidates.append({
+                "url": url,
+                "label": label or cls._label_from_url(url),
+                "watermark": watermark,
+                "bitrate": bitrate or 0,
+                "size": size or 0,
+            })
+
+        playback_list = media_info.get("playback_list") or []
+        if isinstance(playback_list, str):
+            try:
+                playback_list = json.loads(playback_list)
+            except (ValueError, json.JSONDecodeError):
+                playback_list = []
+        for item in playback_list:
+            info = (item or {}).get("play_info") or {}
+            if isinstance(info, dict):
+                add(info.get("url"), info.get("label") or "", info.get("watermark"),
+                    info.get("bitrate"), info.get("size"))
+
+        for key, value in (page_info.get("urls") or {}).items():
+            add(value, key)
+        for key in ("mp4_1080p_mp4", "mp4_720p_mp4", "mp4_hd_mp4", "mp4_sd_mp4", "mp4_ld_mp4",
+                    "mp4_hd_url", "mp4_sd_url", "stream_url_hd", "stream_url"):
+            add(media_info.get(key), key)
+
+        return candidates
+
+    @classmethod
+    def _pick_best_video_url(cls, page_info, media_info):
+        """选流：优先平台标记无水印(watermark=none)的档位，其次按码率与清晰度取最高。
+
+        微博视频号来源的成片在上传时就把水印压进了原始文件，其 playback_list 里
+        所有档位都是 watermark=original，任何直链都去不掉，只能取最高清的那一档。
+        """
+        candidates = cls._video_candidates(page_info, media_info)
+        if not candidates:
+            return None
+
+        def score(item):
+            return (
+                1 if item["watermark"] == "none" else 0,
+                item["bitrate"],
+                cls.VIDEO_QUALITY_RANK.get(item["label"], 0),
+                item["size"],
+            )
+
+        url = max(candidates, key=score)["url"]
+        return f"https:{url}" if url.startswith("//") else url
+
     def get_real_video_url(self):
         try:
             live_url = (
@@ -271,22 +340,13 @@ class WeiboParser(BaseParser):
                 if url:
                     return f"https:{url}" if url.startswith("//") else url
 
-            # First try m.weibo.cn format
+            # m.weibo.cn / PC ajax 格式
             page_info = self.post_data.get('page_info', {})
-            media_info = page_info.get('media_info', {})
-            
-            url = media_info.get('mp4_hd_url') or media_info.get('mp4_sd_url') or media_info.get('stream_url_hd') or media_info.get('stream_url')
-            if url:
-                return url
-                
-            playback_list = media_info.get('playback_list', [])
-            for pb in playback_list:
-                if 'play_info' in pb and pb['play_info'].get('url'):
-                    return pb['play_info']['url']
-                    
+            return self._pick_best_video_url(page_info, page_info.get('media_info', {}))
+
         except Exception:
             pass
-            
+
         return None
 
     def get_title_content(self):

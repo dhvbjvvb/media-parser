@@ -135,5 +135,87 @@ class WeiboParserTest(unittest.TestCase):
         self.assertEqual(parser.get_author_info()["avatar"], "https://tvax1.sinaimg.cn/avatar.jpg")
 
 
+    def test_video_pick_prefers_unwatermarked_variant(self):
+        """playback_list 里同时存在带水印与无水印档位时，优先无水印档。"""
+        parser = WeiboParser.__new__(WeiboParser)
+        parser.post_data = {
+            "page_info": {
+                "media_info": {
+                    "playback_list": [
+                        {"play_info": {"label": "mp4_720p", "bitrate": 1200004, "size": 8832938,
+                                       "watermark": "original",
+                                       "url": "https://f.video.weibocdn.com/o0/a.mp4?label=mp4_720p"}},
+                        {"play_info": {"label": "mp4_hd", "bitrate": 794552, "size": 5848503,
+                                       "watermark": "none",
+                                       "url": "https://f.video.weibocdn.com/u0/b.mp4?label=mp4_hd"}},
+                    ]
+                }
+            }
+        }
+        self.assertEqual(parser.get_real_video_url(), "https://f.video.weibocdn.com/u0/b.mp4?label=mp4_hd")
+
+    def test_video_pick_takes_highest_bitrate_when_all_watermarked(self):
+        """微博视频号成片全部带烧录水印，此时退化为按码率取最高清档。"""
+        parser = WeiboParser.__new__(WeiboParser)
+        parser.post_data = {
+            "page_info": {
+                "media_info": {
+                    "playback_list": [
+                        {"play_info": {"label": "mp4_hd", "bitrate": 794552, "size": 5848503,
+                                       "watermark": "original",
+                                       "url": "https://f.video.weibocdn.com/o0/b.mp4?label=mp4_hd"}},
+                        {"play_info": {"label": "mp4_720p", "bitrate": 1200004, "size": 8832938,
+                                       "watermark": "original",
+                                       "url": "https://f.video.weibocdn.com/o0/a.mp4?label=mp4_720p"}},
+                    ]
+                }
+            }
+        }
+        self.assertEqual(parser.get_real_video_url(), "https://f.video.weibocdn.com/o0/a.mp4?label=mp4_720p")
+
+    def test_video_pick_prefers_720p_over_hd_without_playback_list(self):
+        """移动端数据没有 playback_list，按 page_info.urls 档位取最高清的 720P。"""
+        parser = WeiboParser.__new__(WeiboParser)
+        parser.post_data = {
+            "page_info": {
+                "urls": {
+                    "mp4_720p_mp4": "https://f.video.weibocdn.com/o0/a.mp4?label=mp4_720p&template=720x1280.24.0",
+                    "mp4_hd_mp4": "https://f.video.weibocdn.com/o0/b.mp4?label=mp4_hd&template=540x960.24.0",
+                    "mp4_ld_mp4": "https://f.video.weibocdn.com/o0/b.mp4?label=mp4_hd&template=540x960.24.0",
+                },
+                "media_info": {
+                    "stream_url": "https://f.video.weibocdn.com/o0/b.mp4?label=mp4_hd&template=540x960.24.0",
+                    "stream_url_hd": "https://f.video.weibocdn.com/o0/b.mp4?label=mp4_hd&template=540x960.24.0",
+                },
+            }
+        }
+        self.assertEqual(parser.get_real_video_url(),
+                         "https://f.video.weibocdn.com/o0/a.mp4?label=mp4_720p&template=720x1280.24.0")
+
+    def test_video_pick_parses_playback_list_json_string(self):
+        """PC ajax 有时把 playback_list 作为 JSON 字符串返回。"""
+        parser = WeiboParser.__new__(WeiboParser)
+        parser.post_data = {
+            "page_info": {
+                "media_info": {
+                    "playback_list": (
+                        '[{"play_info": {"label": "mp4_hd", "bitrate": 794552, "watermark": "none",'
+                        ' "url": "//f.video.weibocdn.com/u0/b.mp4?label=mp4_hd"}}]'
+                    )
+                }
+            }
+        }
+        self.assertEqual(parser.get_real_video_url(), "https://f.video.weibocdn.com/u0/b.mp4?label=mp4_hd")
+
+    def test_video_pick_falls_back_to_media_info_urls(self):
+        parser = WeiboParser.__new__(WeiboParser)
+        parser.post_data = {
+            "page_info": {
+                "media_info": {"mp4_sd_url": "http://f.video.weibocdn.com/u0/c.mp4?label=mp4_sd"}
+            }
+        }
+        self.assertEqual(parser.get_real_video_url(), "http://f.video.weibocdn.com/u0/c.mp4?label=mp4_sd")
+
+
 if __name__ == "__main__":
     unittest.main()

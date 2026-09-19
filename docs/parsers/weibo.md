@@ -53,6 +53,17 @@
 
 ---
 
+### 2.5 视频选流规则与"视频号水印"边界
+候选直链来自三处：`page_info.urls`、`media_info` 的各档 URL 字段、`playback_list[].play_info.url`。选流规则为：
+
+1. `playback_list[].play_info.watermark == "none"`（平台确认无水印）的档位优先于其它取值；
+2. 同组内依次比较 `bitrate`、档位代号（`mp4_1080p` > `mp4_720p` > `mp4_hd` > `mp4_sd` > `mp4_ld`）、`size`。
+
+> **微博视频号内容的例外**：来源为「微博视频号」的成片，其右上角水印（"微博视频号 · 看我视频不错过"）在上传时就被压进原始文件，`playback_list` 中所有档位均为 `watermark: "original"`，CDN 上不存在无水印副本。实测改 `label` / `template` / `watermark` 等查询参数会被 CDN 忽略并返回同一文件，改路径（`/o0/` → `/u0/`、`/origin/`、`/large/`）则因 `ssig` 签名覆盖路径而返回 403。此类内容只能返回最高清档，去水印必须重新编码裁剪水印区域。
+> 对照：普通微博视频为 `watermark: "none"` + `/u0/` 目录，解析结果本身即无水印。
+
+---
+
 ## 3. 常见踩坑记录 (Gotchas)
 
 1. **新浪图床防盗链 (HTTP 403 Forbidden)**：
