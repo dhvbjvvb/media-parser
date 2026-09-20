@@ -12,6 +12,8 @@ PLATFORM_COOKIE_ALIASES = {
     "jimeng": ["JIMENG_COOKIE"],
     "weibo": ["WEIBO_COOKIE"],
     "kuaishou": ["KUAISHOU_COOKIE", "KS_COOKIE"],
+    "qishui": ["QISHUI_COOKIE", "QSMUSIC_COOKIE"],
+    "qsmusic": ["QISHUI_COOKIE", "QSMUSIC_COOKIE"],
 }
 
 

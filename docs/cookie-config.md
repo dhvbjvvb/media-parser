@@ -18,6 +18,7 @@
 | **即梦 AI** | `JIMENG_COOKIE` | - | 🟡 **可选 (扩展鉴权)**：公开分享免 Cookie；私有草稿/活动页鉴权需要 | `sessionid=xxx;` |
 | **微博** | `WEIBO_COOKIE` | - | 🟡 **可选 (防访客限制)**：常规公开博文免 Cookie；机房 IP 遭遇访客拦截或解析粉丝可见内容时配置 | `SUB=xxx;` |
 | **抖音** | `DOUYIN_COOKIE` | - | 🟢 **免配置 (100% 免 Cookie)**：日常短视频/图文图集免 Cookie；放映厅长片 (`/lvdetail/`) 可选滑块凭证 | `s_v_web_id=verify_xxx;` |
+| **汽水音乐** | `QISHUI_COOKIE` | `QSMUSIC_COOKIE` | 🔐 **VIP 曲目必需**：免费曲目匿名即可解析完整音频；会员曲目匿名只下发 30~60 秒试听片段 | `sessionid=xxx; sessionid_ss=xxx; sid_tt=xxx;` |
 
 ---
 
@@ -136,6 +137,17 @@ docker compose up -d
    SUB=你的SUB值;
    ```
 3. 填入 `.env` 中的 `WEIBO_COOKIE`（用于解决机房 IP 访客限制或提取粉丝可见博文/高码率视频）。
+
+### 3.8 汽水音乐 (`QISHUI_COOKIE`)
+> **仅会员曲目需要**。免费曲目匿名解析即为完整音频；会员曲目匿名只返回 30~60 秒试听，必须带 VIP 登录态。
+1. 使用电脑浏览器打开 [汽水音乐 (music.douyin.com)](https://music.douyin.com/) 并登录**已开通会员**的抖音账号。
+2. 按 `F12` 打开开发者工具，切换到 **Application (应用) -> Cookies -> https://music.douyin.com**。
+3. 提取以下核心字段拼装成字符串（`sessionid` 是登录态关键字段）：
+   ```text
+   sessionid=你的sessionid值; sessionid_ss=你的sessionid_ss值; sid_tt=你的sid_tt值; uid_tt=你的uid_tt值;
+   ```
+4. 填入 `.env` 中的 `QISHUI_COOKIE`，重启服务。
+5. 验证：解析一首会员歌曲，响应里不应再出现 `is_preview: true`，`full_duration` 应等于歌曲完整时长。
 
 ---
 
