@@ -217,6 +217,12 @@ abogus = signer.get_abogus(play_url, signer.user_agent)
   * 在 `bit_rate` 列表中综合评估：$\text{分辨率像素数 (Width} \times \text{Height)} \rightarrow \text{码率 (bit\_rate)} \rightarrow \text{文件体积 (data\_size)} \rightarrow \text{质量类型} \rightarrow \text{直链优先级}$；
   * 优先筛选兼容性最好的 H.264 编码最高画质流，杜绝 Web/移动端跨平台播放黑屏。
 
+### 4.9 播放端点清洗与无水印升清（`playwm` 自动纠正）
+* **`playwm` 端点风险**：抖音分享页 SSR 数据在未下发 `bit_rate` 列表时，默认仅在 `play_addr.url_list` 中下发包含 `/playwm/`（Play With Watermark）的 720p 带水印地址（带有片头作者 ID 和片尾抖音 Logo）；
+* **无水印清洗与 1080P 升清**：
+  * 在 `_extract_best_url_from_play_addr` 中自动将 `/playwm/` 替换为 `/play/`；
+  * 同时将参数中的 `ratio=720p` 自动提升为 `ratio=1080p`，实现直连 1080P 原始无水印纯净流。
+
 ---
 
 ## 5. 常见踩坑记录与风控解法 (Gotchas)
@@ -244,7 +250,6 @@ abogus = signer.get_abogus(play_url, signer.user_agent)
      4. **重试次数降为 2 次与极速降级**：Web 重试上限设为 2 次，遇到突发网络波动或未配置 Cookie 时，在 **<0.5 秒内极速降级至分享页 SSR**，确保静态高清原图毫秒级产出，不再阻塞等待；
      5. **兜底保障**：所有链路均配合终端状态（`_is_terminal_failure`）即时短路熔断机制。
 
-
 5. **私密/日常/已删除链接的不可重试终端状态与智能短路熔断**：
    * *现象与机理*：用户传入“抖音日常（24小时可见）”、“私密（仅自己可见）”或“已被作者删除”的作品链接时，官方 Web 详情接口返回 HTTP 200，但带有 `filter_detail`（如 `status_self_see`、`status_deleted`、`status_part_see`）。此类作品本身已被平台限制访问，无论重试多少次都不会有数据。
    * *旧版弊端*：若将此类 HTTP 200 的空响应视同为普通抓取失败，解析器会经历完整的 8 次指数退避重试以及 SSR HTML 兜底，导致单个失效链接耗时高达 11~14 秒，严重消耗并发连接池，且因统一返回模糊的 `MEDIA_NOT_FOUND`，容易诱导用户误判系统故障而反复狂刷重试。
@@ -253,6 +258,10 @@ abogus = signer.get_abogus(play_url, signer.user_agent)
      2. **耗时断崖式下降**：将失效链接的处理耗时从 **11.3 秒压缩至 ~2 秒**（主要仅包含基础 302 跳转与单次 Web API 判定）；
      3. **精准原因透传**：将官方返回的限制文案（如 `因作品权限或已被删除，无法观看，去看看其他作品吧`）通过 `retdesc` 准确反馈给调用端与终端用户，彻底杜绝无意义的重试刷量。
 
+6. **分享页 SSR 兜底数据下发 `playwm` 带水印端点**：
+   * *现象*：部分未收录于 Feed 推荐流的视频在走移动端分享页 SSR 降级时，SSR `_ROUTER_DATA` 中仅包含 `video.play_addr` 且地址形式为 `/aweme/v1/playwm/?...`（720P 带片头作者水印与片尾抖音 Logo）。
+   * *解法*：解析器在提取播放地址时，统一将 `/playwm/` 路径自动转换为 `/play/`，并同步将 `ratio=720p` 改写为 `ratio=1080p`，保证在任何兜底场景下输出的均为 1080P 真正无水印原画视频。
+
 ---
 
 ## 6. 测试与验证
@@ -260,9 +269,9 @@ abogus = signer.get_abogus(play_url, signer.user_agent)
 * **单元测试文件**：[tests/test_douyin_parser.py](file:///Users/leo/Projects/media-parser/tests/test_douyin_parser.py)
 * **执行测试**：
   ```bash
-  # 运行抖音专项全覆盖单元测试 (24 个用例，含移动端 Feed 主路径、容灾切换、Web API 降级与终端状态短路)
+  # 运行抖音专项全覆盖单元测试 (含移动端 Feed 主路径、容灾切换、Web API 降级、playwm清洗及终端状态短路)
   python -m unittest tests/test_douyin_parser.py
   
-  # 运行全平台回归测试 (300 个用例)
+  # 运行全平台回归测试
   python -m unittest discover -s tests
   ```
